@@ -1,459 +1,616 @@
-import React, { useState, useRef } from 'react';
-import { Building, User, FileText, CheckCircle, Copy, Send, Printer, Camera, PenTool, X, Loader2, Search } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulir Koperasi Adaro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Pengaturan khusus saat dicetak ke PDF */
+        @media print {
+            body { background-color: white !important; }
+            .print-hidden { display: none !important; }
+            .print-block { display: block !important; }
+            @page { margin: 0; } /* Menghilangkan header/footer default browser */
+        }
+        /* Cegah scrolling pada kanvas saat tanda tangan di HP */
+        canvas { touch-action: none; }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 min-h-screen">
 
-export default function App() {
-  const [jenisForm, setJenisForm] = useState('buka');
-  const [berhasil, setBerhasil] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingAnggota, setIsFetchingAnggota] = useState(false);
-  const [foto, setFoto] = useState(null);
-  const [ttdDataUrl, setTtdDataUrl] = useState(null);
-  
-  const [formData, setFormData] = useState({
-    nama: '', nik: '', noAnggota: '', lokasiKerja: '', noHp: '',
-    nominal: '', terbilang: '', durasi: '', tanggalMulai: '', tanggalSelesai: '',
-    jenisPerubahan: 'Penambahan', nominalSemula: '', nominalMenjadi: '', mulaiBulan: ''
-  });
-
-  // Referensi untuk kanvas tanda tangan
-  const canvasRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleFotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFoto(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Fungsi Tanda Tangan
-  const getCoordinates = (e, canvas) => {
-    const rect = canvas.getBoundingClientRect();
-    if (e.touches && e.touches.length > 0) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const startDrawing = (e) => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const { x, y } = getCoordinates(e, canvas);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    setIsDrawing(true);
-  };
-
-  const draw = (e) => {
-    e.preventDefault();
-    if (!isDrawing) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const { x, y } = getCoordinates(e, canvas);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  };
-
-  const stopDrawing = () => {
-    if (isDrawing) {
-      setIsDrawing(false);
-      setTtdDataUrl(canvasRef.current.toDataURL('image/png'));
-    }
-  };
-
-  const clearTtd = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setTtdDataUrl(null);
-  };
-
-  const cariDataAnggota = async () => {
-    const no = formData.noAnggota;
-    if (!no) return;
-    
-    setIsFetchingAnggota(true);
-    
-    // Gunakan encodeURIComponent untuk memastikan karakter aman untuk URL
-    const safeNoAnggota = encodeURIComponent(no.trim());
-    const urlFetch = `https://script.google.com/macros/s/AKfycbxBMZ6lVxo7H3B5aRaMO26OoiCGNzbZWXIaQ6fXypq8T25kl_2g-hgtSzy33tutXGJ5/exec?noAnggota=${safeNoAnggota}`;
-    
-    try {
-      const response = await fetch(urlFetch);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      if (result && result.status === 'sukses' && result.data) {
-        setFormData(prev => ({
-          ...prev,
-          nama: result.data.nama || prev.nama,
-          nik: result.data.nik || prev.nik,
-          lokasiKerja: result.data.site || prev.lokasiKerja,
-          noHp: result.data.noHp || prev.noHp
-        }));
-      } else if (result.status === 'gagal') {
-        console.warn("Pesan dari server:", result.pesan);
-      }
-    } catch (error) {
-      console.error("Gagal menarik data:", error);
-      
-      // Deteksi error CORS yang biasa terjadi karena restriksi Workspace Admin
-      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        alert("Peringatan: Gagal menarik data karena diblokir oleh Google (Error CORS). \n\nHal ini hampir selalu terjadi jika Anda menggunakan Akun Google Workspace Kantor/Organisasi, yang secara default membatasi akses ke Web App eksternal. \n\nSolusi: Gunakan akun Gmail pribadi (@gmail.com) Anda untuk menyalin Spreadsheet dan men-Deploy ulang Apps Script tersebut.");
-      } else {
-        alert("Gagal menarik data. Pastikan koneksi internet lancar dan pengaturan Apps Script sudah 'Siapa Saja' (Anyone).");
-      }
-    } finally {
-      setIsFetchingAnggota(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    const payload = {
-      jenisForm,
-      formData,
-      foto,
-      ttdDataUrl
-    };
-
-    const scriptUrl = 'https://script.google.com/macros/s/AKfycbwKmH-KtSi_m2Md5yM4vnjEwP1ldRi8Qyi8q-CImbL4wQJYyYMPYmwZkqjhOrqm32JLjQ/exec'; 
-
-    try {
-      await fetch(scriptUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain',
-        },
-        body: JSON.stringify(payload)
-      });
-      
-      setBerhasil(true);
-      setTimeout(() => {
-        setBerhasil(false);
-        setFormData({
-          nama: '', nik: '', noAnggota: '', lokasiKerja: '', noHp: '',
-          nominal: '', terbilang: '', durasi: '', tanggalMulai: '', tanggalSelesai: '',
-          jenisPerubahan: 'Penambahan', nominalSemula: '', nominalMenjadi: '', mulaiBulan: ''
-        });
-        setFoto(null);
-        clearTtd();
-      }, 3000);
-    } catch (error) {
-      console.error(error);
-      alert('Gagal mengirim data ke server. Periksa koneksi internet Anda.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const cetakPDF = () => {
-    window.print();
-  };
-
-  const renderJudulCetak = () => {
-    if (jenisForm === 'buka') return 'TABUNGAN SUKARELA BERJANGKA';
-    if (jenisForm === 'perpanjang') return 'PERPANJANGAN TABUNGAN SUKARELA BERJANGKA';
-    return 'PERUBAHAN TABUNGAN SUKARELA';
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-      
-      {/* TAMPILAN LAYAR (Disembunyikan saat cetak) */}
-      <div className="p-4 md:p-8 print:hidden">
-        <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-          
-          <div className="bg-blue-700 p-6 text-white text-center">
-            <div className="flex justify-center mb-3"><Building size={40} className="text-blue-200" /></div>
-            <h1 className="text-2xl font-bold mb-1">Koperasi Karyawan Adaro Karya Mandiri</h1>
-            <p className="text-sm text-blue-100">Formulir Digital Terintegrasi</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-6 md:p-8">
+    <!-- TAMPILAN LAYAR (Disembunyikan saat cetak) -->
+    <div id="ui-container" class="p-4 md:p-8 print-hidden">
+        <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
             
-            {/* Pilihan Formulir */}
-            <div className="mb-8">
-              <label className="block text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider">Pilih Jenis Layanan</label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <button type="button" onClick={() => setJenisForm('buka')} className={`p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors ${jenisForm === 'buka' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                  <FileText size={24} className="mb-2" /><span className="text-sm font-medium">Buka Tabungan</span>
-                </button>
-                <button type="button" onClick={() => setJenisForm('perpanjang')} className={`p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors ${jenisForm === 'perpanjang' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                  <Copy size={24} className="mb-2" /><span className="text-sm font-medium">Perpanjang Tabungan</span>
-                </button>
-                <button type="button" onClick={() => setJenisForm('ubah')} className={`p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors ${jenisForm === 'ubah' ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' : 'border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                  <CheckCircle size={24} className="mb-2" /><span className="text-sm font-medium">Ubah Tabungan</span>
-                </button>
-              </div>
+            <div class="bg-blue-700 p-6 text-white text-center">
+                <div class="flex justify-center mb-3">
+                    <i data-lucide="building" class="text-blue-200 w-10 h-10"></i>
+                </div>
+                <h1 class="text-2xl font-bold mb-1">Koperasi Karyawan Adaro Karya Mandiri</h1>
+                <p class="text-sm text-blue-100">Formulir Digital Terintegrasi</p>
             </div>
 
-            <hr className="border-slate-100 mb-8" />
-
-            {/* Data Diri Anggota */}
-            <div className="mb-8">
-              <div className="flex items-center text-blue-700 mb-4">
-                <User size={20} className="mr-2" /><h2 className="text-lg font-bold">Data Diri Anggota</h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nomor Induk Karyawan (NIK)</label>
-                  <input required type="text" name="nik" value={formData.nik} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nomor Anggota</label>
-                  <div className="relative">
-                    <input required type="text" name="noAnggota" value={formData.noAnggota} onChange={handleInputChange} onBlur={cariDataAnggota} placeholder="Ketik & klik di luar kotak" className="w-full p-2 pr-10 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                    <div className="absolute right-2 top-2.5 text-slate-400">
-                      {isFetchingAnggota ? <Loader2 size={18} className="animate-spin text-blue-500" /> : <Search size={18} />}
+            <form id="mainForm" class="p-6 md:p-8">
+                
+                <!-- Pilihan Formulir -->
+                <div class="mb-8">
+                    <label class="block text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider">Pilih Jenis Layanan</label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <button type="button" onclick="setJenisForm('buka')" id="btn-buka" class="form-type-btn bg-blue-50 border-blue-500 text-blue-700 p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors shadow-sm">
+                            <i data-lucide="file-text" class="mb-2 w-6 h-6"></i>
+                            <span class="text-sm font-medium">Buka Tabungan</span>
+                        </button>
+                        <button type="button" onclick="setJenisForm('perpanjang')" id="btn-perpanjang" class="form-type-btn border-slate-200 hover:bg-slate-50 text-slate-600 p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors">
+                            <i data-lucide="copy" class="mb-2 w-6 h-6"></i>
+                            <span class="text-sm font-medium">Perpanjang Tabungan</span>
+                        </button>
+                        <button type="button" onclick="setJenisForm('ubah')" id="btn-ubah" class="form-type-btn border-slate-200 hover:bg-slate-50 text-slate-600 p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors">
+                            <i data-lucide="check-circle" class="mb-2 w-6 h-6"></i>
+                            <span class="text-sm font-medium">Ubah Tabungan</span>
+                        </button>
                     </div>
-                  </div>
+                </div>
+
+                <hr class="border-slate-100 mb-8" />
+
+                <!-- Data Diri Anggota -->
+                <div class="mb-8">
+                    <div class="flex items-center text-blue-700 mb-4">
+                        <i data-lucide="user" class="mr-2 w-5 h-5"></i>
+                        <h2 class="text-lg font-bold">Data Diri Anggota</h2>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
+                            <input required type="text" id="nama" class="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1" id="label-nik">Nomor Induk Karyawan (NIK)</label>
+                            <input required type="text" id="nik" class="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Nomor Anggota</label>
+                            <div class="relative">
+                                <input required type="text" id="noAnggota" placeholder="Ketik & klik di luar kotak" class="w-full p-2 pr-10 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                                <div class="absolute right-2 top-2.5 text-slate-400" id="search-icon-container">
+                                    <i data-lucide="search" class="w-[18px] h-[18px]"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="field-lokasi-hp" class="contents">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Lokasi Kerja</label>
+                                <input required type="text" id="lokasiKerja" class="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Nomor Handphone</label>
+                                <input required type="text" id="noHp" class="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload Foto -->
+                <div class="mb-8 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div class="flex items-center text-slate-700 mb-3">
+                        <i data-lucide="camera" class="mr-2 w-[18px] h-[18px]"></i>
+                        <h3 class="font-semibold">Foto Digital (Tampil di Dokumen Cetak)</h3>
+                    </div>
+                    <input type="file" accept="image/*" id="fotoUpload" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                    <img id="fotoPreview" src="" alt="Preview" class="hidden mt-3 h-24 w-auto rounded border shadow-sm" />
+                </div>
+
+                <hr class="border-slate-100 mb-8" />
+
+                <!-- Rincian Transaksi -->
+                <div class="mb-8">
+                    <div class="flex items-center text-blue-700 mb-4">
+                        <i data-lucide="file-text" class="mr-2 w-5 h-5"></i>
+                        <h2 class="text-lg font-bold">Rincian Transaksi</h2>
+                    </div>
+                    
+                    <!-- Form Buka / Perpanjang -->
+                    <div id="section-buka-perpanjang" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Nominal Tabungan (Rp)</label>
+                            <input type="number" id="nominal" class="req-buka w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Terbilang</label>
+                            <input type="text" id="terbilang" class="req-buka w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Selama (Jangka Waktu)</label>
+                            <input type="text" id="durasi" class="req-buka w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Mulai Tanggal</label>
+                                <input type="date" id="tanggalMulai" class="req-buka w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-1">Sampai Tanggal</label>
+                                <input type="date" id="tanggalSelesai" class="req-buka w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form Ubah -->
+                    <div id="section-ubah" class="hidden grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Jenis Perubahan</label>
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2">
+                                    <input type="radio" name="jenisPerubahan" value="Penambahan" checked class="text-blue-600" /> Penambahan
+                                </label>
+                                <label class="flex items-center gap-2">
+                                    <input type="radio" name="jenisPerubahan" value="Pengurangan" class="text-blue-600" /> Pengurangan
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Semula Sebesar (Rp)</label>
+                            <input type="number" id="nominalSemula" class="req-ubah w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Menjadi Sebesar (Rp)</label>
+                            <input type="number" id="nominalMenjadi" class="req-ubah w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Dimulai dari Bulan</label>
+                            <input type="month" id="mulaiBulan" class="req-ubah w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tanda Tangan Digital -->
+                <div class="mb-8">
+                    <div class="flex items-center justify-between text-slate-700 mb-2">
+                        <div class="flex items-center">
+                            <i data-lucide="pen-tool" class="mr-2 w-[18px] h-[18px]"></i>
+                            <h3 class="font-semibold">Tanda Tangan Digital</h3>
+                        </div>
+                        <button type="button" onclick="clearSignature()" class="text-xs text-red-500 hover:text-red-700 flex items-center bg-red-50 px-2 py-1 rounded">
+                            <i data-lucide="x" class="mr-1 w-3.5 h-3.5"></i> Hapus
+                        </button>
+                    </div>
+                    <div class="border-2 border-dashed border-slate-300 rounded-lg bg-white overflow-hidden touch-none relative">
+                        <canvas id="signatureCanvas" width="600" height="200" class="w-full h-40 cursor-crosshair relative z-10"></canvas>
+                        <div id="canvasPlaceholder" class="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none z-0">
+                            Tanda tangan di area ini
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-3 mt-8">
+                    <button type="submit" id="btn-submit" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors">
+                        <i data-lucide="send" class="mr-2 w-[18px] h-[18px]" id="submit-icon"></i> 
+                        <span id="submit-text">Simpan Data</span>
+                    </button>
+                    <button type="button" onclick="cetakPDF()" class="flex-1 bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors">
+                        <i data-lucide="printer" class="mr-2 w-[18px] h-[18px]"></i> Cetak PDF / Dokumen
+                    </button>
                 </div>
                 
-                {(jenisForm === 'buka' || jenisForm === 'perpanjang') && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Lokasi Kerja</label>
-                      <input required type="text" name="lokasiKerja" value={formData.lokasiKerja} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Nomor Handphone</label>
-                      <input required type="text" name="noHp" value={formData.noHp} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Upload Foto */}
-            <div className="mb-8 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="flex items-center text-slate-700 mb-3">
-                <Camera size={18} className="mr-2" /><h3 className="font-semibold">Foto Digital (Tampil di Dokumen Cetak)</h3>
-              </div>
-              <input type="file" accept="image/*" onChange={handleFotoUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-              {foto && <img src={foto} alt="Preview" className="mt-3 h-24 w-auto rounded border shadow-sm" />}
-            </div>
-
-            <hr className="border-slate-100 mb-8" />
-
-            {/* Rincian Transaksi */}
-            <div className="mb-8">
-              <div className="flex items-center text-blue-700 mb-4">
-                <FileText size={20} className="mr-2" /><h2 className="text-lg font-bold">Rincian Transaksi</h2>
-              </div>
-              
-              {(jenisForm === 'buka' || jenisForm === 'perpanjang') ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Nominal Tabungan (Rp)</label>
-                    <input required type="number" name="nominal" value={formData.nominal} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Terbilang</label>
-                    <input required type="text" name="terbilang" value={formData.terbilang} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Selama (Jangka Waktu)</label>
-                    <input required type="text" name="durasi" value={formData.durasi} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Mulai Tanggal</label>
-                      <input required type="date" name="tanggalMulai" value={formData.tanggalMulai} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Sampai Tanggal</label>
-                      <input required type="date" name="tanggalSelesai" value={formData.tanggalSelesai} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                    </div>
-                  </div>
+                <!-- Notifikasi Berhasil -->
+                <div id="alert-success" class="hidden mt-4 p-3 bg-green-100 text-green-700 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle" class="mr-2 w-5 h-5"></i> Data berhasil disimpan ke Google Sheets!
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Jenis Perubahan</label>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input type="radio" name="jenisPerubahan" value="Penambahan" checked={formData.jenisPerubahan === 'Penambahan'} onChange={handleInputChange} className="text-blue-600" /> Penambahan
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="radio" name="jenisPerubahan" value="Pengurangan" checked={formData.jenisPerubahan === 'Pengurangan'} onChange={handleInputChange} className="text-blue-600" /> Pengurangan
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Semula Sebesar (Rp)</label>
-                    <input required type="number" name="nominalSemula" value={formData.nominalSemula} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Menjadi Sebesar (Rp)</label>
-                    <input required type="number" name="nominalMenjadi" value={formData.nominalMenjadi} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Dimulai dari Bulan</label>
-                    <input required type="month" name="mulaiBulan" value={formData.mulaiBulan} onChange={handleInputChange} className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                </div>
-              )}
-            </div>
 
-            {/* Tanda Tangan Digital */}
-            <div className="mb-8">
-              <div className="flex items-center justify-between text-slate-700 mb-2">
-                <div className="flex items-center"><PenTool size={18} className="mr-2" /><h3 className="font-semibold">Tanda Tangan Digital</h3></div>
-                <button type="button" onClick={clearTtd} className="text-xs text-red-500 hover:text-red-700 flex items-center bg-red-50 px-2 py-1 rounded">
-                  <X size={14} className="mr-1" /> Hapus
-                </button>
-              </div>
-              <div className="border-2 border-dashed border-slate-300 rounded-lg bg-white overflow-hidden touch-none relative">
-                <canvas 
-                  ref={canvasRef} 
-                  width={600} 
-                  height={200} 
-                  className="w-full h-40 cursor-crosshair"
-                  onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-                />
-                {!ttdDataUrl && !isDrawing && (
-                  <div className="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none">
-                    Tanda tangan di area ini
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 mt-8">
-              <button type="submit" disabled={isLoading} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50">
-                {isLoading ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Send size={18} className="mr-2" />} 
-                {isLoading ? 'Menyimpan...' : 'Simpan Data'}
-              </button>
-              <button type="button" onClick={cetakPDF} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors">
-                <Printer size={18} className="mr-2" /> Cetak PDF / Dokumen
-              </button>
-            </div>
-            {berhasil && <div className="mt-4 p-3 bg-green-100 text-green-700 rounded-lg flex items-center justify-center"><CheckCircle size={20} className="mr-2" /> Data berhasil disimpan ke Google Sheets!</div>}
-
-          </form>
+            </form>
         </div>
-      </div>
+    </div>
 
-      {/* TAMPILAN CETAK PDF (Hanya muncul saat print) */}
-      <div className="hidden print:block bg-white text-black p-8 max-w-[21cm] mx-auto min-h-[29.7cm] relative">
+    <!-- TAMPILAN CETAK PDF (Hanya muncul saat print) -->
+    <div id="print-container" class="hidden print-block bg-white text-black p-8 max-w-[21cm] mx-auto min-h-[29.7cm] relative">
         
-        {/* Kop Surat */}
-        <div className="flex border-b-[3px] border-black pb-4 mb-8 items-center">
-          <img src="https://i.ibb.co.com/WvTwLMn5/image-1.png" alt="Logo Koperasi Adaro" className="w-24 h-24 object-contain mr-6" />
-          <div className="flex-1 text-center">
-            <h1 className="text-xl font-bold uppercase mb-1">Koperasi Karyawan Adaro Karya Mandiri</h1>
-            <p className="text-sm">Badan Hukum Nomor : 2128/BH/IX Tanggal 31 Juli 1995</p>
-            <p className="text-sm">Office : Jl. Jend. A. Yani Komp. Swadharma Jalur II Blok Mawar RT IV</p>
-            <p className="text-sm">Kel. Mabuun Kec. Murung Pudak Kab. Tabalong Prov. Kalimantan Selatan</p>
-            <p className="text-sm">Kode Pos 71571 Telp/Fax : 0526 – 2023593 email : kopkar.adaro@gmail.com</p>
-          </div>
+        <!-- Kop Surat -->
+        <div class="flex border-b-[3px] border-black pb-4 mb-8 items-center">
+            <img src="https://i.ibb.co.com/WvTwLMn5/image-1.png" alt="Logo Koperasi Adaro" class="w-24 h-24 object-contain mr-6" />
+            <div class="flex-1 text-center">
+                <h1 class="text-xl font-bold uppercase mb-1">Koperasi Karyawan Adaro Karya Mandiri</h1>
+                <p class="text-sm">Badan Hukum Nomor : 2128/BH/IX Tanggal 31 Juli 1995</p>
+                <p class="text-sm">Office : Jl. Jend. A. Yani Komp. Swadharma Jalur II Blok Mawar RT IV</p>
+                <p class="text-sm">Kel. Mabuun Kec. Murung Pudak Kab. Tabalong Prov. Kalimantan Selatan</p>
+                <p class="text-sm">Kode Pos 71571 Telp/Fax : 0526 – 2023593 email : kopkar.adaro@gmail.com</p>
+            </div>
         </div>
 
-        {/* Foto jika ada */}
-        {foto && (
-          <div className="absolute top-[160px] right-8">
-            <div className="w-[3cm] h-[4cm] border-2 border-black flex items-center justify-center overflow-hidden p-1">
-              <img src={foto} alt="Pas Foto" className="w-full h-full object-cover" />
+        <!-- Foto Cetak -->
+        <div id="print-foto-container" class="hidden absolute top-[160px] right-8">
+            <div class="w-[3cm] h-[4cm] border-2 border-black flex items-center justify-center overflow-hidden p-1">
+                <img id="print-foto" src="" alt="Pas Foto" class="w-full h-full object-cover" />
             </div>
-          </div>
-        )}
+        </div>
 
-        {/* Judul Dokumen */}
-        <h2 className="text-center font-bold text-lg underline uppercase mb-8">
-          {renderJudulCetak()}
+        <!-- Judul Dokumen -->
+        <h2 id="print-judul" class="text-center font-bold text-lg underline uppercase mb-8">
+            TABUNGAN SUKARELA BERJANGKA
         </h2>
 
-        {/* Konten */}
-        <div className="text-justify leading-relaxed text-base">
-          <p className="mb-4">Saya yang bertandatangan dibawah ini :</p>
-          
-          <table className="w-full mb-6 ml-4">
-            <tbody>
-              <tr><td className="w-48 pb-1">Nama</td><td className="w-4 pb-1">:</td><td className="pb-1">{formData.nama}</td></tr>
-              <tr><td className="pb-1">{jenisForm === 'ubah' ? 'NIP' : 'Nomor Induk Karyawan'}</td><td className="pb-1">:</td><td className="pb-1">{formData.nik}</td></tr>
-              <tr><td className="pb-1">Nomor Anggota</td><td className="pb-1">:</td><td className="pb-1">{formData.noAnggota}</td></tr>
-              {(jenisForm === 'buka' || jenisForm === 'perpanjang') && (
-                <>
-                  <tr><td className="pb-1">Lokasi Kerja</td><td className="pb-1">:</td><td className="pb-1">{formData.lokasiKerja}</td></tr>
-                  <tr><td className="pb-1">Nomor Handphone</td><td className="pb-1">:</td><td className="pb-1">{formData.noHp}</td></tr>
-                </>
-              )}
-            </tbody>
-          </table>
+        <!-- Konten -->
+        <div class="text-justify leading-relaxed text-base">
+            <p class="mb-4">Saya yang bertandatangan dibawah ini :</p>
+            
+            <table class="w-full mb-6 ml-4">
+                <tbody>
+                    <tr><td class="w-48 pb-1">Nama</td><td class="w-4 pb-1">:</td><td class="pb-1" id="p-nama"></td></tr>
+                    <tr><td class="pb-1" id="p-label-nik">Nomor Induk Karyawan</td><td class="pb-1">:</td><td class="pb-1" id="p-nik"></td></tr>
+                    <tr><td class="pb-1">Nomor Anggota</td><td class="pb-1">:</td><td class="pb-1" id="p-noAnggota"></td></tr>
+                    <tr class="p-buka-only"><td class="pb-1">Lokasi Kerja</td><td class="pb-1">:</td><td class="pb-1" id="p-lokasiKerja"></td></tr>
+                    <tr class="p-buka-only"><td class="pb-1">Nomor Handphone</td><td class="pb-1">:</td><td class="pb-1" id="p-noHp"></td></tr>
+                </tbody>
+            </table>
 
-          {jenisForm === 'buka' && (
-            <div className="mb-6">
-              <p className="mb-1">Melakukan penyimpanan pada Tabungan Sukarela Berjangka di Koperasi Karyawan Adaro Karya Mandiri sebesar Rp {formData.nominal || '(..................)'}</p>
-              <p className="mb-1">Terbilang ({formData.terbilang || '...........................................'})</p>
-              <p className="mb-1">Selama {formData.durasi || '.................'}</p>
-              <p className="mb-1">Di mulai dari ({formData.tanggalMulai || '..................'}) sampai dengan ({formData.tanggalSelesai || '..................'})</p>
+            <div id="p-text-buka" class="mb-6">
+                <p class="mb-1">Melakukan penyimpanan pada Tabungan Sukarela Berjangka di Koperasi Karyawan Adaro Karya Mandiri sebesar Rp <span id="p-nominal">(..................)</span></p>
+                <p class="mb-1">Terbilang (<span id="p-terbilang">...........................................</span>)</p>
+                <p class="mb-1">Selama <span id="p-durasi">.................</span></p>
+                <p class="mb-1">Di mulai dari (<span id="p-tglMulai">..................</span>) sampai dengan (<span id="p-tglSelesai">..................</span>)</p>
             </div>
-          )}
 
-          {jenisForm === 'perpanjang' && (
-            <div className="mb-6">
-              <p className="mb-1">Memperpanjang jangka waktu untuk Tabungan Sukarela Berjangka di Koperasi Karyawan Adaro Karya Mandiri sebesar Rp {formData.nominal || '(..................)'}</p>
-              <p className="mb-1">Terbilang ({formData.terbilang || '...........................................'})</p>
-              <p className="mb-1">Selama {formData.durasi || '.................'}</p>
-              <p className="mb-1">Di mulai dari ({formData.tanggalMulai || '..................'}) sampai dengan ({formData.tanggalSelesai || '..................'})</p>
+            <div id="p-text-perpanjang" class="hidden mb-6">
+                <p class="mb-1">Memperpanjang jangka waktu untuk Tabungan Sukarela Berjangka di Koperasi Karyawan Adaro Karya Mandiri sebesar Rp <span id="p-nominal-2">(..................)</span></p>
+                <p class="mb-1">Terbilang (<span id="p-terbilang-2">...........................................</span>)</p>
+                <p class="mb-1">Selama <span id="p-durasi-2">.................</span></p>
+                <p class="mb-1">Di mulai dari (<span id="p-tglMulai-2">..................</span>) sampai dengan (<span id="p-tglSelesai-2">..................</span>)</p>
             </div>
-          )}
 
-          {jenisForm === 'ubah' && (
-            <div className="mb-6">
-              <p className="mb-2">Memberi kuasa kepada Koperasi Karyawan Adaro Karya Mandiri untuk melakukan pemotongan ({formData.jenisPerubahan}) Tabungan Sukarela dari rekening gaji, yaitu :</p>
-              <p className="mb-1">Yang semula sebesar Rp {formData.nominalSemula || '(..................)'}</p>
-              <p className="mb-1">Menjadi sebesar Rp {formData.nominalMenjadi || '(........................................................................)'}</p>
-              <p className="mb-1">Di mulai dari Bulan ({formData.mulaiBulan || '..................'})</p>
+            <div id="p-text-ubah" class="hidden mb-6">
+                <p class="mb-2">Memberi kuasa kepada Koperasi Karyawan Adaro Karya Mandiri untuk melakukan pemotongan (<span id="p-jenisUbah">...</span>) Tabungan Sukarela dari rekening gaji, yaitu :</p>
+                <p class="mb-1">Yang semula sebesar Rp <span id="p-nominalSemula">(..................)</span></p>
+                <p class="mb-1">Menjadi sebesar Rp <span id="p-nominalMenjadi">(........................................................................)</span></p>
+                <p class="mb-1">Di mulai dari Bulan (<span id="p-mulaiBulan">..................</span>)</p>
             </div>
-          )}
 
-          <p className="mb-12">Demikian surat ini saya buat tanpa ada paksaan dari siapa pun.</p>
+            <p class="mb-12">Demikian surat ini saya buat tanpa ada paksaan dari siapa pun.</p>
         </div>
 
-        {/* Tanda Tangan Cetak */}
-        <div className="flex justify-between items-end mt-4">
-          <div className="text-center w-64">
-            <p className="mb-2">Anggota</p>
-            <div className="h-24 flex items-center justify-center">
-              {ttdDataUrl && <img src={ttdDataUrl} alt="Tanda Tangan" className="max-h-24 max-w-full" />}
+        <!-- Tanda Tangan Cetak -->
+        <div class="flex justify-between items-end mt-4">
+            <div class="text-center w-64">
+                <p class="mb-2">Anggota</p>
+                <div class="h-24 flex items-center justify-center relative">
+                    <img id="print-ttd" src="" alt="" class="hidden max-h-24 max-w-full absolute" />
+                </div>
+                <p class="underline font-bold" id="p-nama-ttd">______________________</p>
             </div>
-            <p className="underline font-bold">{formData.nama || '______________________'}</p>
-          </div>
-          <div className="text-center w-64">
-            <p className="mb-2">Tanjung, {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            <p className="mb-2">Kopkar Adaro Karya Mandiri</p>
-            <div className="h-24"></div>
-            <p>________________________</p>
-          </div>
+            <div class="text-center w-64">
+                <p class="mb-2" id="p-tanggal">Tanjung, ...</p>
+                <p class="mb-2">Kopkar Adaro Karya Mandiri</p>
+                <div class="h-24"></div>
+                <p>________________________</p>
+            </div>
         </div>
 
-        {/* Footer Cetak */}
-        <div className="absolute bottom-10 left-0 w-full text-center text-sm italic border-t border-black pt-2">
-          Melayani sepenuh hati dari anggota oleh anggota dan untuk anggota
+        <!-- Footer Cetak -->
+        <div class="absolute bottom-10 left-0 w-full text-center text-sm italic border-t border-black pt-2">
+            Melayani sepenuh hati dari anggota oleh anggota dan untuk anggota
         </div>
-
-      </div>
     </div>
-  );
-}
+
+    <!-- SCRIPT LOGIKA APLIKASI -->
+    <script>
+        // Inisialisasi Icon
+        lucide.createIcons();
+
+        // State Global
+        let currentFormType = 'buka';
+        let fotoDataUrl = null;
+        let ttdDataUrl = null;
+        let isDrawing = false;
+
+        // URL Web Apps Script
+        const URL_CARI_ANGGOTA = 'https://script.google.com/macros/s/AKfycbxBMZ6lVxo7H3B5aRaMO26OoiCGNzbZWXIaQ6fXypq8T25kl_2g-hgtSzy33tutXGJ5/exec';
+        const URL_SIMPAN_DATA = 'https://script.google.com/macros/s/AKfycbwKmH-KtSi_m2Md5yM4vnjEwP1ldRi8Qyi8q-CImbL4wQJYyYMPYmwZkqjhOrqm32JLjQ/exec';
+
+        // --- MANAJEMEN UI & FORM ---
+        function setJenisForm(type) {
+            currentFormType = type;
+            
+            // Reset Button Styles
+            document.querySelectorAll('.form-type-btn').forEach(btn => {
+                btn.className = 'form-type-btn border-slate-200 hover:bg-slate-50 text-slate-600 p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors';
+            });
+            
+            // Set Active Style
+            const activeBtn = document.getElementById(`btn-${type}`);
+            activeBtn.className = 'form-type-btn bg-blue-50 border-blue-500 text-blue-700 p-3 border rounded-lg flex flex-col items-center justify-center text-center transition-colors shadow-sm';
+
+            // Tampilkan/Sembunyikan Field
+            const secBuka = document.getElementById('section-buka-perpanjang');
+            const secUbah = document.getElementById('section-ubah');
+            const fieldLokasiHp = document.getElementById('field-lokasi-hp');
+            const labelNik = document.getElementById('label-nik');
+
+            // Reset requirement attr
+            document.querySelectorAll('.req-buka, .req-ubah').forEach(el => el.required = false);
+
+            if (type === 'ubah') {
+                secBuka.classList.add('hidden');
+                secBuka.classList.remove('grid');
+                secUbah.classList.remove('hidden');
+                secUbah.classList.add('grid');
+                fieldLokasiHp.classList.add('hidden');
+                fieldLokasiHp.classList.remove('contents');
+                labelNik.innerText = "NIP";
+                document.querySelectorAll('.req-ubah').forEach(el => el.required = true);
+                
+                // Print UI setup
+                document.querySelectorAll('.p-buka-only').forEach(el => el.classList.add('hidden'));
+            } else {
+                secBuka.classList.remove('hidden');
+                secBuka.classList.add('grid');
+                secUbah.classList.add('hidden');
+                secUbah.classList.remove('grid');
+                fieldLokasiHp.classList.remove('hidden');
+                fieldLokasiHp.classList.add('contents');
+                labelNik.innerText = "Nomor Induk Karyawan (NIK)";
+                document.querySelectorAll('.req-buka').forEach(el => el.required = true);
+                
+                // Print UI setup
+                document.querySelectorAll('.p-buka-only').forEach(el => el.classList.remove('hidden'));
+            }
+            
+            // Update Title Cetak Setup
+            const printJudul = document.getElementById('print-judul');
+            if (type === 'buka') printJudul.innerText = 'TABUNGAN SUKARELA BERJANGKA';
+            if (type === 'perpanjang') printJudul.innerText = 'PERPANJANGAN TABUNGAN SUKARELA BERJANGKA';
+            if (type === 'ubah') printJudul.innerText = 'PERUBAHAN TABUNGAN SUKARELA';
+        }
+
+        // --- UPLOAD FOTO ---
+        document.getElementById('fotoUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    fotoDataUrl = reader.result;
+                    const preview = document.getElementById('fotoPreview');
+                    preview.src = fotoDataUrl;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // --- KANVAS TANDA TANGAN ---
+        const canvas = document.getElementById('signatureCanvas');
+        const ctx = canvas.getContext('2d');
+        const placeholder = document.getElementById('canvasPlaceholder');
+
+        function getCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+            }
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function startDrawing(e) {
+            e.preventDefault();
+            isDrawing = true;
+            placeholder.classList.add('hidden'); // Sembunyikan tulisan
+            const { x, y } = getCoordinates(e);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        function draw(e) {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const { x, y } = getCoordinates(e);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+
+        function stopDrawing() {
+            if (isDrawing) {
+                isDrawing = false;
+                ttdDataUrl = canvas.toDataURL('image/png');
+            }
+        }
+
+        function clearSignature() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ttdDataUrl = null;
+            placeholder.classList.remove('hidden');
+        }
+
+        // Event Listeners untuk Kanvas
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseleave', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('touchend', stopDrawing);
+
+        // --- PENCARIAN DATA ANGGOTA ---
+        document.getElementById('noAnggota').addEventListener('blur', async function() {
+            const no = this.value.trim();
+            if (!no) return;
+
+            const iconContainer = document.getElementById('search-icon-container');
+            iconContainer.innerHTML = '<i data-lucide="loader-2" class="w-[18px] h-[18px] animate-spin text-blue-500"></i>';
+            lucide.createIcons();
+
+            const safeNoAnggota = encodeURIComponent(no);
+            const urlFetch = `${URL_CARI_ANGGOTA}?noAnggota=${safeNoAnggota}`;
+
+            try {
+                const response = await fetch(urlFetch, { method: 'GET', redirect: 'follow' });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const result = await response.json();
+                
+                if (result && result.status === 'sukses' && result.data) {
+                    if (result.data.nama) document.getElementById('nama').value = result.data.nama;
+                    if (result.data.nik) document.getElementById('nik').value = result.data.nik;
+                    if (result.data.site) document.getElementById('lokasiKerja').value = result.data.site;
+                    if (result.data.noHp) document.getElementById('noHp').value = result.data.noHp;
+                }
+            } catch (error) {
+                console.error("Gagal menarik data:", error);
+                if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+                    alert("Gagal menarik data (Error CORS). Kemungkinan diblokir oleh sistem Google Workspace Anda.");
+                }
+            } finally {
+                iconContainer.innerHTML = '<i data-lucide="search" class="w-[18px] h-[18px]"></i>';
+                lucide.createIcons();
+            }
+        });
+
+        // --- SUBMIT FORM ---
+        document.getElementById('mainForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('btn-submit');
+            const submitText = document.getElementById('submit-text');
+            const submitIcon = document.getElementById('submit-icon');
+            
+            // Set loading state
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            submitText.innerText = 'Menyimpan...';
+            submitIcon.setAttribute('data-lucide', 'loader-2');
+            submitIcon.classList.add('animate-spin');
+            lucide.createIcons();
+
+            // Kumpulkan data
+            const formData = {
+                nama: document.getElementById('nama').value,
+                nik: document.getElementById('nik').value,
+                noAnggota: document.getElementById('noAnggota').value,
+                lokasiKerja: document.getElementById('lokasiKerja').value,
+                noHp: document.getElementById('noHp').value,
+                nominal: document.getElementById('nominal').value,
+                terbilang: document.getElementById('terbilang').value,
+                durasi: document.getElementById('durasi').value,
+                tanggalMulai: document.getElementById('tanggalMulai').value,
+                tanggalSelesai: document.getElementById('tanggalSelesai').value,
+                jenisPerubahan: document.querySelector('input[name="jenisPerubahan"]:checked').value,
+                nominalSemula: document.getElementById('nominalSemula').value,
+                nominalMenjadi: document.getElementById('nominalMenjadi').value,
+                mulaiBulan: document.getElementById('mulaiBulan').value
+            };
+
+            const payload = {
+                jenisForm: currentFormType,
+                formData: formData,
+                foto: fotoDataUrl,
+                ttdDataUrl: ttdDataUrl
+            };
+
+            try {
+                await fetch(URL_SIMPAN_DATA, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify(payload)
+                });
+                
+                // Tampilkan sukses
+                const alertSuccess = document.getElementById('alert-success');
+                alertSuccess.classList.remove('hidden');
+                
+                // Reset Form
+                setTimeout(() => {
+                    alertSuccess.classList.add('hidden');
+                    document.getElementById('mainForm').reset();
+                    document.getElementById('fotoPreview').classList.add('hidden');
+                    fotoDataUrl = null;
+                    clearSignature();
+                }, 3000);
+
+            } catch (error) {
+                console.error(error);
+                alert('Gagal mengirim data ke server. Periksa koneksi internet Anda.');
+            } finally {
+                // Remove loading state
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+                submitText.innerText = 'Simpan Data';
+                submitIcon.setAttribute('data-lucide', 'send');
+                submitIcon.classList.remove('animate-spin');
+                lucide.createIcons();
+            }
+        });
+
+        // --- CETAK PDF ---
+        function preparePrintData() {
+            // Mapping input ke teks PDF
+            document.getElementById('p-nama').innerText = document.getElementById('nama').value || '______________________';
+            document.getElementById('p-nik').innerText = document.getElementById('nik').value || '______________________';
+            document.getElementById('p-noAnggota').innerText = document.getElementById('noAnggota').value || '______________________';
+            document.getElementById('p-lokasiKerja').innerText = document.getElementById('lokasiKerja').value || '______________________';
+            document.getElementById('p-noHp').innerText = document.getElementById('noHp').value || '______________________';
+            document.getElementById('p-nama-ttd').innerText = document.getElementById('nama').value || '______________________';
+            
+            // Tanggal dinamis
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('p-tanggal').innerText = `Tanjung, ${new Date().toLocaleDateString('id-ID', options)}`;
+
+            // Tampilkan bagian teks sesuai jenis form
+            document.getElementById('p-text-buka').classList.add('hidden');
+            document.getElementById('p-text-perpanjang').classList.add('hidden');
+            document.getElementById('p-text-ubah').classList.add('hidden');
+            
+            document.getElementById('p-label-nik').innerText = currentFormType === 'ubah' ? 'NIP' : 'Nomor Induk Karyawan';
+
+            if (currentFormType === 'buka') {
+                document.getElementById('p-text-buka').classList.remove('hidden');
+                document.getElementById('p-nominal').innerText = document.getElementById('nominal').value || '(..................)';
+                document.getElementById('p-terbilang').innerText = document.getElementById('terbilang').value || '...........................................';
+                document.getElementById('p-durasi').innerText = document.getElementById('durasi').value || '.................';
+                document.getElementById('p-tglMulai').innerText = document.getElementById('tanggalMulai').value || '..................';
+                document.getElementById('p-tglSelesai').innerText = document.getElementById('tanggalSelesai').value || '..................';
+            } else if (currentFormType === 'perpanjang') {
+                document.getElementById('p-text-perpanjang').classList.remove('hidden');
+                document.getElementById('p-nominal-2').innerText = document.getElementById('nominal').value || '(..................)';
+                document.getElementById('p-terbilang-2').innerText = document.getElementById('terbilang').value || '...........................................';
+                document.getElementById('p-durasi-2').innerText = document.getElementById('durasi').value || '.................';
+                document.getElementById('p-tglMulai-2').innerText = document.getElementById('tanggalMulai').value || '..................';
+                document.getElementById('p-tglSelesai-2').innerText = document.getElementById('tanggalSelesai').value || '..................';
+            } else if (currentFormType === 'ubah') {
+                document.getElementById('p-text-ubah').classList.remove('hidden');
+                document.getElementById('p-jenisUbah').innerText = document.querySelector('input[name="jenisPerubahan"]:checked').value || '...';
+                document.getElementById('p-nominalSemula').innerText = document.getElementById('nominalSemula').value || '(..................)';
+                document.getElementById('p-nominalMenjadi').innerText = document.getElementById('nominalMenjadi').value || '(........................................................................)';
+                document.getElementById('p-mulaiBulan').innerText = document.getElementById('mulaiBulan').value || '..................';
+            }
+
+            // Tampilkan Gambar
+            const printFotoCtn = document.getElementById('print-foto-container');
+            const printFoto = document.getElementById('print-foto');
+            if (fotoDataUrl) {
+                printFoto.src = fotoDataUrl;
+                printFotoCtn.classList.remove('hidden');
+            } else {
+                printFotoCtn.classList.add('hidden');
+            }
+
+            // Tampilkan Tanda Tangan
+            const printTtd = document.getElementById('print-ttd');
+            if (ttdDataUrl) {
+                printTtd.src = ttdDataUrl;
+                printTtd.classList.remove('hidden');
+            } else {
+                printTtd.classList.add('hidden');
+            }
+        }
+
+        function cetakPDF() {
+            preparePrintData();
+            window.print();
+        }
+
+        // Set form default awal
+        setJenisForm('buka');
+    </script>
+</body>
+</html>
